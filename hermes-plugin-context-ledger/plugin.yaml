@@ -1,0 +1,11 @@
+name: context-ledger
+version: "0.1.0"
+description: >
+  Block-ledger context engine (billion-context style): compresses old
+  conversation ranges into restorable summary blocks, exposes ledger status /
+  search / decompress tools, and keeps a tail guard on the most recent
+  messages. Activate with context.engine: "context-ledger" in config.yaml.
+provides_tools:
+  - ledger_status
+  - ledger_search
+  - ledger_decompress

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: Core server (build + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build
+        working-directory: context-ledger
+        run: npm install && npm run build
+      - name: Test
+        working-directory: context-ledger
+        run: npm test
+
+  openclaw-plugin:
+    name: OpenClaw plugin (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build
+        working-directory: openclaw-plugin-context-ledger
+        run: npm install && npm run build
+
+  hermes-plugin:
+    name: Hermes plugin (smoke tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Smoke tests
+        working-directory: hermes-plugin-context-ledger
+        run: python test_smoke.py
+
+  hooks:
+    name: Host hooks (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build core (hooks vendor its kernel.js)
+        working-directory: context-ledger
+        run: npm install && npm run build
+      - name: Refresh vendored kernel.js from core build
+        run: cp context-ledger/dist/kernel.js claude-code-hook-context-ledger/kernel.js
+      - name: Claude Code hook smoke
+        working-directory: claude-code-hook-context-ledger
+        run: |
+          echo '{"session_id":"ci","prompt":"hello world"}' | node hook.js
+          echo '{"session_id":"ci","prompt":"hello again world"}' | CONTEXT_LEDGER_THRESHOLD=1 node hook.js | grep additionalContext
+      - name: Cursor hook smoke
+        working-directory: cursor-hook-context-ledger
+        run: |
+          echo '{"conversation_id":"ci","prompt":"hello world"}' | python hook.py
+          echo '{"conversation_id":"ci","prompt":"hello again world"}' | CONTEXT_LEDGER_DATA=/tmp/cl-ci CONTEXT_LEDGER_THRESHOLD=1 python hook.py | grep user_message

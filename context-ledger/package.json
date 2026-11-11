@@ -1,0 +1,23 @@
+{
+  "name": "context-ledger",
+  "version": "0.1.0",
+  "description": "billion-context-style context compression MCP server for ChatGPT desktop (Developer Mode custom connectors). Dual transport: streamable HTTP + stdio.",
+  "type": "module",
+  "bin": {
+    "context-ledger": "dist/cli.js"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js --http --port 8791",
+    "test": "node dist/__tests__/kernel.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

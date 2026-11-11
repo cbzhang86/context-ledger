@@ -1,0 +1,7 @@
+{
+  "name": "claude-code-hook-context-ledger",
+  "version": "0.1.0",
+  "description": "Claude Code hooks: UserPromptSubmit reminder + PreCompact/PostCompact observer backed by the context-ledger block ledger.",
+  "type": "module",
+  "license": "MIT"
+}

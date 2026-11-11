@@ -1,0 +1,34 @@
+{
+  "id": "context-ledger",
+  "name": "Context Ledger",
+  "version": "0.1.0",
+  "description": "Automatic billion-context-style conversation compression. Maintains a per-session block ledger (summaries replace old ranges, originals kept restorable) and injects the compacted context view before every prompt build.",
+  "kind": "context-engine",
+  "contextEngineIds": ["context-ledger"],
+  "categories": ["context"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "dataDir": {
+        "type": "string",
+        "description": "Directory for the per-session ledger JSON files. Defaults to <openclaw state>/context-ledger (or CONTEXT_LEDGER_DATA env)."
+      },
+      "compressThresholdTokens": {
+        "type": "number",
+        "description": "Inject the compression reminder + compressible ranges once the estimated live context exceeds this many tokens.",
+        "default": 8000
+      },
+      "viewTokens": {
+        "type": "number",
+        "description": "Token budget for the injected compressed view (renderView limit). 0 = unbounded.",
+        "default": 2000
+      },
+      "autoAppend": {
+        "type": "boolean",
+        "description": "Append the live view (instead of only reminding) when the session is long. false = reminder-only, model calls compress itself.",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

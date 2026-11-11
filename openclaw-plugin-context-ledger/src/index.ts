@@ -24,6 +24,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface PluginConfig {
+  enabled?: boolean;
   dataDir?: string;
   compressThresholdTokens?: number;
   viewTokens?: number;
@@ -172,6 +173,7 @@ export default definePluginEntry({
     "Automatic billion-context-style compression: mirrors the transcript into a block ledger and injects the compacted view before prompt build.",
   register(api: PluginAPI) {
     const cfg: Required<Pick<PluginConfig, "compressThresholdTokens" | "viewTokens" | "autoAppend">> & PluginConfig = {
+      enabled: api.config?.enabled ?? true,
       compressThresholdTokens: api.config?.compressThresholdTokens ?? 8000,
       viewTokens: api.config?.viewTokens ?? 2000,
       autoAppend: api.config?.autoAppend ?? false,
@@ -200,7 +202,16 @@ export default definePluginEntry({
       return m;
     };
 
+    // Kill switch: config enabled:false, or env CONTEXT_LEDGER_DISABLE set
+    // to a non-empty value other than "0"/"false". Checked at every hook
+    // invocation so the plugin can be turned off without a restart.
+    const envDisabled = (): boolean => {
+      const v = (process.env.CONTEXT_LEDGER_DISABLE ?? "").trim().toLowerCase();
+      return v !== "" && v !== "0" && v !== "false";
+    };
+
     api.on("before_prompt_build", (event: PromptBuildEvent): PromptBuildResult => {
+      if (cfg.enabled === false || envDisabled()) return {};
       const sessionKey = event?.sessionKey ?? "default";
       const history = event?.history ?? [];
       if (history.length === 0) return {};

@@ -181,26 +181,45 @@ export function buildTools(kernel: Kernel): ToolDef[] {
   ];
 }
 
+/**
+ * Master switch for the whole server. When CONTEXT_LEDGER_DISABLE is set to
+ * any non-empty value other than "0"/"false" (case-insensitive):
+ *  - tools/list still returns the five tools (so hosts show a healthy server)
+ *    but every tools/call returns a gentle isError telling the model the
+ *    ledger is disabled.
+ *  - the initialize instructions are omitted, so no host injects compression
+ *    guidance into the system prompt.
+ * The switch is consulted per request — toggling takes effect immediately,
+ * no restart needed.
+ */
+export function ledgerDisabled(): boolean {
+  const v = (process.env.CONTEXT_LEDGER_DISABLE ?? "").trim().toLowerCase();
+  return v !== "" && v !== "0" && v !== "false";
+}
+
 export function handleRpc(kernel: Kernel, req: JsonRpcReq): any {
   const id = req.id ?? null;
   switch (req.method) {
-    case "initialize":
-      return rpcResult(id, {
-        protocolVersion: PROTOCOL_VERSION,
-        capabilities: { tools: {} },
-        serverInfo: { name: "context-ledger", version: "0.1.0" },
-        // Injected into the host's system prompt by MCP-aware harnesses
-        // (Claude Code, OpenClaw, Zed, ...): makes the model compress
-        // proactively instead of waiting for the user to ask.
-        instructions:
-          "context-ledger is a block-ledger context compressor. As conversation history grows " +
+    case "initialize": {
+      // Injected into the host's system prompt by MCP-aware harnesses
+      // (Claude Code, OpenClaw, Zed, ...): makes the model compress
+      // proactively instead of waiting for the user to ask.
+      const instructions = ledgerDisabled()
+        ? undefined
+        : "context-ledger is a block-ledger context compressor. As conversation history grows " +
           "(rule of thumb: >30 turns or >20k estimated tokens), proactively compress consumed " +
           "ranges with `compress` (locate ranges by from_contains/to_contains anchors; leave the " +
           "last 4 messages live), preferring self-contained summaries that preserve file paths, " +
           "signatures, errors, decisions and open objectives verbatim. Use `acp_status` to check " +
           "savings and compressible ranges, `search_context`/`decompress` to recall detail, and " +
-          "`acp_view` to export a compressed view when starting a fresh conversation (rolling handoff).",
+          "`acp_view` to export a compressed view when starting a fresh conversation (rolling handoff).";
+      return rpcResult(id, {
+        protocolVersion: PROTOCOL_VERSION,
+        capabilities: { tools: {} },
+        serverInfo: { name: "context-ledger", version: "0.1.0" },
+        ...(instructions ? { instructions } : {}),
       });
+    }
     case "notifications/initialized":
       return undefined; // notification: no response
     case "ping":
@@ -215,6 +234,19 @@ export function handleRpc(kernel: Kernel, req: JsonRpcReq): any {
       });
     case "tools/call": {
       const name = req.params?.name;
+      if (ledgerDisabled()) {
+        return rpcResult(id, {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "context-ledger is disabled (CONTEXT_LEDGER_DISABLE is set). " +
+                "Nothing was compressed or modified. Remove the env var (or set it to 0) " +
+                "and retry to re-enable the ledger.",
+            },
+          ],
+        });
+      }
       const tool = buildTools(kernel).find((t) => t.name === name);
       if (!tool) return rpcError(id, -32602, `unknown tool: ${name}`);
       try {

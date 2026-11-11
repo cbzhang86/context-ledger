@@ -144,6 +144,31 @@ threshold. Each native plugin has its own README with verification steps.
 
 ---
 
+## billion-context or context-ledger?
+
+Honest answer: [billion-context](https://github.com/ranxianglei/billion-context)
+(the project that inspired this one) is a *traffic-level* proxy that sits
+between your host and the model API — more mature, production-tested at
+18.7B tokens, and the better choice **wherever you can plug a proxy in**
+(Claude Code, Codex, pi, opencode, dsh, and ~20 more).
+
+Use **context-ledger** instead when:
+
+- **Your host has no routing seam.** ChatGPT Desktop, Claude Desktop's Code
+  tab, and similar closed apps run model traffic in ways no proxy can reach
+  (billion-context itself documents these as unfixable, e.g. issue #2290).
+  A plain MCP server + native plugins work there.
+- **You don't want a resident proxy.** No daemon, no CA certificates, no
+  port management, no SQLite maintenance — one `node dist/cli.js`, zero
+  runtime dependencies.
+- **You want host-native compression without traffic interception** — the
+  OpenClaw context-engine and Hermes ContextEngine integrations here replace
+  context through official extension APIs, not MITM.
+
+On hosts where billion-context already ships a native plugin, use it —
+this project's MCP surface overlaps there by design (same tool contract),
+and everything here stays opt-in and switchable.
+
 ## The core server
 
 Five MCP tools (names follow the billion-context contract):
@@ -181,6 +206,27 @@ Zero runtime dependencies; TypeScript, ~900 lines total.
   descriptions spell out that contract.
 - **v0.1.0.** Tested via unit tests + live smoke tests on every host listed,
   but real-world mileage may vary; issues welcome.
+
+### One switch to turn it all off
+
+Every component in this repo honors the same kill switch:
+
+```bash
+export CONTEXT_LEDGER_DISABLE=1   # or any value other than 0/false
+```
+
+- **MCP server** — tools stay listed (hosts keep showing a healthy server)
+  but every call returns a gentle "disabled" error; the `instructions`
+  system-prompt field is omitted.
+- **OpenClaw plugin** — the hook returns nothing (per-request, no restart;
+  or set `enabled: false` in the plugin config permanently).
+- **Hermes engine** — automatic compression stops; a manual `/compress`
+  (force) still works, so you never lose the ability to compact.
+- **Claude Code / Cursor hooks** — exit silently, nothing injected
+  (Cursor's `--observe` compaction logger keeps running).
+
+Set it to `0`, `false`, or unset it to re-enable. No restarts needed for
+the hooks and the MCP server.
 
 ---
 

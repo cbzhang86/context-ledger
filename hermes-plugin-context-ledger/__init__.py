@@ -38,6 +38,14 @@ ENGINE_NAME = "context-ledger"
 DEFAULT_THRESHOLD_RATIO = 0.7  # compress at 70% of the context window
 
 
+def _env_disabled() -> bool:
+    """Runtime kill switch: CONTEXT_LEDGER_DISABLE set to anything except
+    "0"/"false" (case-insensitive) turns the engine into a no-op without
+    touching config. Checked on every decision point."""
+    v = os.environ.get("CONTEXT_LEDGER_DISABLE", "").strip().lower()
+    return v not in ("", "0", "false")
+
+
 class ContextLedgerEngine(ContextEngine):
     """Block-ledger context engine for Hermes.
 
@@ -90,6 +98,8 @@ class ContextLedgerEngine(ContextEngine):
         self.last_total_tokens = usage.get("total_tokens", 0)
 
     def should_compress(self, prompt_tokens: int = None) -> bool:
+        if _env_disabled():
+            return False
         if prompt_tokens is None:
             prompt_tokens = self.last_prompt_tokens
         if not prompt_tokens:
@@ -98,6 +108,8 @@ class ContextLedgerEngine(ContextEngine):
 
     def should_compress_preflight(self, messages) -> bool:
         """Cheap char-based estimate before the API call."""
+        if _env_disabled():
+            return False
         total = sum(estimate_tokens(_content_text(m)) for m in messages)
         return total >= self.threshold_tokens
 
@@ -144,6 +156,8 @@ class ContextLedgerEngine(ContextEngine):
 
     def compress(self, messages: list, current_tokens: int = None,
                  focus_topic: str = None, force: bool = False) -> list:
+        if _env_disabled() and not force:
+            return messages
         led = self._ledger_for(messages)
 
         # Determine what to compress: oldest contiguous live range up to the

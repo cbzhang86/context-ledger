@@ -42,6 +42,10 @@ const { Kernel, Store, estimateTokens } = require(join(__dirname, "kernel.js"));
 const DATA_DIR =
   process.env.CONTEXT_LEDGER_DATA || join(homedir(), ".context-ledger");
 const THRESHOLD = Number(process.env.CONTEXT_LEDGER_THRESHOLD || 30000);
+// Kill switch: set CONTEXT_LEDGER_DISABLE=1 to turn the hook into a silent
+// no-op (exit 0, no injection) without removing it from settings.json.
+const v = (process.env.CONTEXT_LEDGER_DISABLE || "").trim().toLowerCase();
+if (v !== "" && v !== "0" && v !== "false") process.exit(0);
 
 function main() {
   let input = "";

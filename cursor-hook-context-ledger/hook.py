@@ -34,8 +34,16 @@ DATA_DIR = os.environ.get("CONTEXT_LEDGER_DATA") or os.path.join(
 THRESHOLD = int(os.environ.get("CONTEXT_LEDGER_THRESHOLD", "30000"))
 
 
+def _env_disabled() -> bool:
+    """Kill switch: CONTEXT_LEDGER_DISABLE=1 → silent no-op (exit 0)."""
+    v = os.environ.get("CONTEXT_LEDGER_DISABLE", "").strip().lower()
+    return v not in ("", "0", "false")
+
+
 def main() -> int:
     observe = "--observe" in sys.argv
+    if _env_disabled() and not observe:
+        return 0  # disabled: no reminder (observer stays available)
     try:
         raw = sys.stdin.read() or "{}"
         evt = json.loads(raw)

@@ -4,11 +4,20 @@
   "version": "0.1.0",
   "description": "Automatic billion-context-style conversation compression. Maintains a per-session block ledger (summaries replace old ranges, originals kept restorable) and injects the compacted context view before every prompt build.",
   "kind": "context-engine",
-  "contextEngineIds": ["context-ledger"],
-  "categories": ["context"],
+  "contextEngineIds": [
+    "context-ledger"
+  ],
+  "categories": [
+    "context"
+  ],
   "configSchema": {
     "type": "object",
     "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Master switch. false disables all hook activity (ledger keeps existing data). Can also be toggled at runtime with the CONTEXT_LEDGER_DISABLE env var.",
+        "default": true
+      },
       "dataDir": {
         "type": "string",
         "description": "Directory for the per-session ledger JSON files. Defaults to <openclaw state>/context-ledger (or CONTEXT_LEDGER_DATA env)."

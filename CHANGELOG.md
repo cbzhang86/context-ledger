@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Global kill switch** — every component (MCP server, OpenClaw plugin,
+  Hermes engine, Claude Code hook, Cursor hook) honors
+  `CONTEXT_LEDGER_DISABLE=1` to turn off reminders/compression without
+  uninstalling; set to `0`/`false`/unset to re-enable, no restart needed.
+  Hermes manual `/compress` (force) keeps working while disabled; the MCP
+  server keeps `tools/list` healthy and returns a gentle per-call error.
+- **Positioning** — README now states plainly where billion-context (the
+  original traffic-level proxy) is the better choice, and where
+  context-ledger fits (hosts with no routing seam, proxy-free setups).
+
 ## [0.1.0] - 2026-11-12
 
 First public release. A block-ledger context compressor for MCP hosts, with

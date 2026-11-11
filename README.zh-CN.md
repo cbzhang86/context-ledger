@@ -120,6 +120,26 @@ cp -r hermes-plugin-context-ledger ~/.hermes/plugins/context_engine/context-ledg
 
 ---
 
+## billion-context 还是 context-ledger？
+
+诚实回答：[billion-context](https://github.com/ranxianglei/billion-context)
+（启发本项目的原作）是一个坐在宿主和模型 API 之间的**流量级代理**——更成熟、
+经过 18.7B token 生产验证，**凡是能插代理的宿主**（Claude Code、Codex、pi、
+opencode、dsh 等 20+ 个）它都是更好的选择。
+
+以下情况用 **context-ledger**：
+
+- **宿主没有路由缝隙。** ChatGPT Desktop、Claude Desktop 的 Code 标签页等
+  封闭应用的模型流量没有任何代理能碰到（原项目自己也把这些标记为无解，
+  如 issue #2290）。一个纯 MCP server + 原生插件在这里能工作。
+- **你不想跑常驻代理。** 没有守护进程、没有 CA 证书、没有端口管理、没有
+  SQLite 维护——一条 `node dist/cli.js`，零运行时依赖。
+- **你想要不经流量拦截的宿主原生压缩**——这里的 OpenClaw context-engine
+  和 Hermes ContextEngine 集成走官方扩展 API 替换上下文，不是中间人。
+
+在 billion-context 已有原生插件的宿主上，请用它——本项目的 MCP 面在那里的
+重叠是有意为之（同一工具契约），且这里的一切都是可选、可开关的。
+
 ## 核心服务器
 
 五个 MCP 工具（命名遵循 billion-context 契约）：

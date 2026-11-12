@@ -29,6 +29,12 @@ interface PluginConfig {
   compressThresholdTokens?: number;
   viewTokens?: number;
   autoAppend?: boolean;
+  /** OpenAI-compatible endpoint used to write block summaries server-side
+   *  (autoAppend mode). Falls back to CONTEXT_LEDGER_SUMMARIZER_* env vars,
+   *  then to a deterministic extractive summary when unset or unreachable. */
+  apiBaseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 interface PluginAPI {
@@ -54,8 +60,104 @@ interface PromptBuildResult {
 }
 
 // ---------------------------------------------------------------------------
+// LLM summarizer (autoAppend server-side compression)
+// ---------------------------------------------------------------------------
+
+const SUMMARY_TIMEOUT_MS = Number(process.env.CONTEXT_LEDGER_SUMMARIZER_TIMEOUT ?? 20_000);
+const SUMMARY_MAX_CHARS = 1400;
+
+const SUMMARY_SYSTEM =
+  "You are a conversation-compression summarizer. Write a dense, self-contained " +
+  "summary of the given message range. Preserve VERBATIM: file paths with line " +
+  "numbers, function/class signatures, error messages, key numbers, decisions " +
+  "with their rationale, constraints, and any unfinished tasks. Use short " +
+  "bullets. Do not add commentary — output only the summary.";
+
+interface SummarizerCfg {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+function summarizerConfig(cfg: PluginConfig): SummarizerCfg | null {
+  const baseUrl =
+    cfg.apiBaseUrl ?? process.env.CONTEXT_LEDGER_SUMMARIZER_BASE_URL ?? "";
+  const apiKey =
+    cfg.apiKey ?? process.env.CONTEXT_LEDGER_SUMMARIZER_API_KEY ?? "";
+  const model =
+    cfg.model ?? process.env.CONTEXT_LEDGER_SUMMARIZER_MODEL ?? "";
+  if (!baseUrl || !apiKey || !model) return null;
+  return { baseUrl, apiKey, model };
+}
+
+/**
+ * Ask the OpenAI-compatible endpoint to write the block summary.
+ * Returns null on any failure — the caller falls back to an extractive
+ * summary, so compression never blocks or breaks a session.
+ */
+async function llmSummary(
+  endpoint: SummarizerCfg,
+  messages: Array<{ role?: string; content?: unknown }>,
+): Promise<string | null> {
+  const transcript = messages
+    .map((m) => {
+      const c = typeof m.content === "string"
+        ? m.content
+        : JSON.stringify(m.content ?? "");
+      return `[${m.role ?? "user"}] ${c}`;
+    })
+    .join("\n")
+    .slice(-48_000); // hard cap on request size
+
+  try {
+    const url = `${(endpoint.baseUrl ?? "").replace(/\/+$/, "")}/chat/completions`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${endpoint.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: endpoint.model,
+        temperature: 0.2,
+        max_tokens: 800,
+        messages: [
+          { role: "system", content: SUMMARY_SYSTEM },
+          { role: "user", content: transcript },
+        ],
+      }),
+      signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const text: string | undefined = data?.choices?.[0]?.message?.content;
+    if (!text || !text.trim()) return null;
+    const t = text.trim();
+    return t.length > SUMMARY_MAX_CHARS
+      ? `${t.slice(0, SUMMARY_MAX_CHARS)}…[truncated]`
+      : t;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // transcript mirroring
 // ---------------------------------------------------------------------------
+
+/** Deterministic fallback summary: first 160 chars of each message in the
+ *  range (same semantics as kernel.py extractive_summary). */
+function extractiveSummary(
+  messages: Array<{ role?: string; content?: unknown }>,
+): string {
+  return messages
+    .map((m) => {
+      const c =
+        typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+      return `[${m.role ?? "user"}] ${c.slice(0, 160)}`;
+    })
+    .join("\n");
+}
 
 /**
  * Map a history entry to a ledger Msg. Mirroring is position-based: the
@@ -98,6 +200,25 @@ class Mirror {
       added++;
     }
     return added;
+  }
+
+  /** Ledger messages inside an id range (for summarizer input). */
+  msgsInRange(
+    startId: string,
+    endId: string,
+  ): Array<{ role?: string; content?: unknown }> {
+    const conv = (this.kernel as unknown as {
+      store: { load: (id: string) => Conversation };
+    }).store.load(this.convId);
+    const num = (id: string) => Number(id.slice(1));
+    const lo = num(startId);
+    const hi = num(endId);
+    return conv.msgs
+      .filter((m) => {
+        const n = num(m.id);
+        return n >= lo && n <= hi;
+      })
+      .map((m) => ({ role: m.role, content: m.content }));
   }
 }
 
@@ -210,7 +331,7 @@ export default definePluginEntry({
       return v !== "" && v !== "0" && v !== "false";
     };
 
-    api.on("before_prompt_build", (event: PromptBuildEvent): PromptBuildResult => {
+    api.on("before_prompt_build", async (event: PromptBuildEvent): Promise<PromptBuildResult> => {
       if (cfg.enabled === false || envDisabled()) return {};
       const sessionKey = event?.sessionKey ?? "default";
       const history = event?.history ?? [];
@@ -235,12 +356,45 @@ export default definePluginEntry({
           .join(", ");
 
         if (cfg.autoAppend) {
-          // Full-auto: hand the model the compacted view directly.
+          // Full-auto: compress the oldest compressible range server-side
+          // (model-written summary when an endpoint is configured, extractive
+          // fallback otherwise), then hand the model the compacted view.
+          const endpoint = summarizerConfig(cfg);
+          const range = st.compressibleRanges[0];
+          let compressed = false;
+          if (range && range.tokens > 0) {
+            const rangeMsgs = mirror.msgsInRange(range.startId, range.endId);
+            let summary: string | null = null;
+            if (endpoint && rangeMsgs.length > 0) {
+              summary = await llmSummary(endpoint, rangeMsgs);
+            }
+            if (summary === null && rangeMsgs.length > 0) {
+              summary = extractiveSummary(rangeMsgs);
+            }
+            if (summary) {
+              const { block, error } = kernel.compress(
+                sessionKey,
+                range.startId,
+                range.endId,
+                summary,
+              );
+              if (!error && block) compressed = true;
+            }
+          }
+          if (compressed) {
+            api.logger.info(
+              `context-ledger: compressed ${range.startId}–${range.endId} server-side`,
+            );
+          }
+          const freshView = kernel.renderView(
+            sessionKey,
+            cfg.viewTokens > 0 ? cfg.viewTokens : undefined,
+          );
           return {
             prependContext:
               `[context-ledger] This session exceeded ${cfg.compressThresholdTokens} tokens. ` +
               `Below is the compacted ledger view (📦 = compressed summary block; ` +
-              `recent messages stay verbatim). Trust this view as authoritative history:\n\n${view}`,
+              `recent messages stay verbatim). Trust this view as authoritative history:\n\n${freshView}`,
           };
         }
 

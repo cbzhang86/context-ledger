@@ -24,9 +24,30 @@ except ImportError:  # outside Hermes (tests / standalone use)
         threshold_tokens: int = 0
         context_length: int = 0
         compression_count: int = 0
+        threshold_percent: float = 0.75
 
         def update_model(self, model, context_length, **kwargs):
+            # Mirror the host ABC: recompute threshold_tokens on model switch,
+            # honoring per-model overrides in model_thresholds (longest
+            # substring match) so a fallback model with a smaller window
+            # doesn't keep the previous model's threshold.
+            # Also capture the live model endpoint so the LLM summarizer can
+            # write summaries with the same provider the host is using.
             self.context_length = context_length
+            for k in ("model", "base_url", "api_key", "provider", "api_mode"):
+                if kwargs.get(k):
+                    setattr(self, f"_model_{k}", kwargs[k])
+            model_thresholds = getattr(self, "model_thresholds", None) or {}
+            percent = self.threshold_percent
+            if model and model_thresholds:
+                best = 0
+                for name, val in model_thresholds.items():
+                    if name and name in model and len(name) > best:
+                        best, percent = len(name), float(val)
+            if not hasattr(self, "_base_threshold_percent"):
+                self._base_threshold_percent = percent
+            self.threshold_percent = percent
+            self.threshold_tokens = int(context_length * percent)
 
 try:
     from .kernel import Ledger, LedgerStore, estimate_tokens, extractive_summary
@@ -36,6 +57,98 @@ except ImportError:  # flat install (no package context)
 
 ENGINE_NAME = "context-ledger"
 DEFAULT_THRESHOLD_RATIO = 0.7  # compress at 70% of the context window
+
+# ---------------------------------------------------------------------------
+# LLM summarizer — model-written summaries (billion-context philosophy),
+# deterministic extractive fallback so compression never fails closed.
+# Credentials: engine attributes captured in update_model (_model_model /
+# _model_base_url / _model_api_key) or CONTEXT_LEDGER_SUMMARIZER_* env vars.
+# ---------------------------------------------------------------------------
+import json as _json
+import urllib.request as _ureq
+import urllib.error as _uerr
+
+LLM_TIMEOUT_SECONDS = float(os.environ.get("CONTEXT_LEDGER_SUMMARIZER_TIMEOUT", "20"))
+SUMMARY_MAX_CHARS = 1400
+
+_SUMMARY_SYSTEM = (
+    "You are a compression engine for a coding-agent context ledger. Write a "
+    "self-contained summary of the consumed conversation range being folded "
+    "away. Keep VERBATIM (never paraphrase): file paths with line numbers, "
+    "function/class/type signatures, exact error messages and stack-trace "
+    "lines, key numbers (versions, thresholds, config keys), decisions AND "
+    "their rationale, constraints, and any task objectives that are still "
+    "open. Dense bullets over prose. The summary is the ONLY record of this "
+    "range once compressed, so nothing load-bearing may be lost."
+)
+
+
+def _summarizer_config(engine) -> Optional[dict]:
+    """Resolve (base_url, api_key, model) from engine attrs, then env, then None."""
+    base = getattr(engine, "_model_base_url", None) or os.environ.get("CONTEXT_LEDGER_SUMMARIZER_BASE_URL")
+    key = getattr(engine, "_model_api_key", None) or os.environ.get("CONTEXT_LEDGER_SUMMARIZER_API_KEY")
+    model = getattr(engine, "_model_model", None) or os.environ.get("CONTEXT_LEDGER_SUMMARIZER_MODEL")
+    if not (base and key and model):
+        return None
+    if not base:
+        return None
+    return {"base_url": base.rstrip("/"), "api_key": key, "model": model}
+
+
+def _llm_summary(engine, messages: list, focus_topic: str = None) -> Optional[str]:
+    """Ask the live model for a self-contained summary of the range.
+
+    Returns None on ANY failure (no creds, network, bad payload) so the
+    caller falls back to the extractive summary. Stdlib urllib only.
+    """
+    cfg = _summarizer_config(engine)
+    if not cfg:
+        return None
+    transcript_chars = []
+    for m in messages:
+        role = m.get("role", "?") if isinstance(m, dict) else getattr(m, "role", "?")
+        content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+        if isinstance(content, (list, tuple)):
+            parts = []
+            for c in content:
+                if isinstance(c, dict):
+                    parts.append(str(c.get("text") or c.get("content") or ""))
+                else:
+                    parts.append(str(c))
+            content = "\n".join(parts)
+        transcript_chars.append(f"[{m.get('id', '') if isinstance(m, dict) else ''}] {role}: {content}")
+    transcript = "\n".join(transcript_chars)[-48000:]  # hard cap ~12k tokens of source
+    focus = f"Current focus topic: {focus_topic}\n\n" if focus_topic else ""
+    payload = _json.dumps({
+        "model": cfg["model"],
+        "temperature": 0.2,
+        "max_tokens": 800,
+        "messages": [
+            {"role": "system", "content": _SUMMARY_SYSTEM},
+            {"role": "user", "content": (
+                f"{focus}Summarize the following consumed conversation range. "
+                f"Output ONLY the summary text.\n\n--- CONVERSATION RANGE ---\n{transcript}"
+            )},
+        ],
+    }).encode("utf-8")
+    url = cfg["base_url"] + "/chat/completions"
+    req = _ureq.Request(url, data=payload, method="POST", headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + cfg["api_key"],
+    })
+    try:
+        with _ureq.urlopen(req, timeout=LLM_TIMEOUT_SECONDS) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        text = (text or "").strip()
+        if not text:
+            return None
+        if len(text) > SUMMARY_MAX_CHARS:
+            text = text[:SUMMARY_MAX_CHARS] + " …[truncated]"
+        return text
+    except (_uerr.URLError, _uerr.HTTPError, OSError, ValueError, KeyError, IndexError):
+        return None
+
 
 
 def _env_disabled() -> bool:
@@ -70,6 +183,8 @@ class ContextLedgerEngine(ContextEngine):
         self.view_tokens = view_tokens
         self._ledgers: Dict[str, Ledger] = {}
         self.threshold_tokens = int(context_length * threshold_ratio)
+        self.threshold_percent = threshold_ratio
+        self.model_thresholds: Dict[str, float] = {}
         super().__init__()
         self.context_length = context_length
 
@@ -84,6 +199,8 @@ class ContextLedgerEngine(ContextEngine):
             view_tokens=self.view_tokens,
         )
         clone.threshold_tokens = self.threshold_tokens
+        clone.threshold_percent = self.threshold_percent
+        clone.model_thresholds = dict(self.model_thresholds)
         return clone
 
     @property
@@ -91,6 +208,16 @@ class ContextLedgerEngine(ContextEngine):
         return ENGINE_NAME
 
     # -- token accounting ------------------------------------------------------
+
+    def update_model(self, model, context_length, **kwargs):
+        """Capture the live endpoint for the LLM summarizer, then apply
+        threshold semantics (host ABC or stub both end up here via super)."""
+        for k in ("model", "base_url", "api_key", "provider", "api_mode"):
+            if kwargs.get(k):
+                setattr(self, f"_model_{k}", kwargs[k])
+        if model and not kwargs.get("model"):
+            self._model_model = model
+        super().update_model(model, context_length, **kwargs)
 
     def update_from_response(self, usage: dict) -> None:
         self.last_prompt_tokens = usage.get("prompt_tokens", 0)
@@ -170,12 +297,17 @@ class ContextLedgerEngine(ContextEngine):
         ranges = led.find_compressible()
         if ranges:
             r = ranges[0]  # oldest
+            range_msgs = [m for m in led.msgs
+                          if Ledger.msg_num(r["startId"]) <= Ledger.msg_num(m["id"])
+                          <= Ledger.msg_num(r["endId"])]
+            # Model-written summary first (billion-context philosophy);
+            # deterministic extractive fallback keeps compression available
+            # offline / credential-less / on any LLM failure.
+            summary = _llm_summary(self, range_msgs, focus_topic)
+            if summary is None:
+                summary = extractive_summary(range_msgs, focus_topic)
             block = led.compress(r["startId"], r["endId"],
-                                 extractive_summary(
-                                     [m for m in led.msgs
-                                      if Ledger.msg_num(r["startId"]) <= Ledger.msg_num(m["id"])
-                                      <= Ledger.msg_num(r["endId"])],
-                                     focus_topic),
+                                 summary,
                                  topic=focus_topic or None)
             self.compression_count = getattr(self, "compression_count", 0) + 1
             self.store.save(led)

@@ -36,6 +36,18 @@
         "type": "boolean",
         "description": "Append the live view (instead of only reminding) when the session is long. false = reminder-only, model calls compress itself.",
         "default": false
+      },
+      "apiBaseUrl": {
+        "type": "string",
+        "description": "OpenAI-compatible base URL the plugin calls to write block summaries (e.g. https://api.openai.com/v1). Falls back to CONTEXT_LEDGER_SUMMARIZER_BASE_URL env. Unset = deterministic extractive summaries."
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "API key for the summarizer endpoint. Falls back to CONTEXT_LEDGER_SUMMARIZER_API_KEY env."
+      },
+      "model": {
+        "type": "string",
+        "description": "Model id used for summaries (e.g. gpt-4o-mini). Falls back to CONTEXT_LEDGER_SUMMARIZER_MODEL env."
       }
     },
     "additionalProperties": false

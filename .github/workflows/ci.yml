@@ -45,27 +45,14 @@ jobs:
         working-directory: hermes-plugin-context-ledger
         run: python test_smoke.py
 
-  hooks:
-    name: Host hooks (smoke)
+  cursor-hook:
+    name: Cursor hook (smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Build core (hooks vendor its kernel.js)
-        working-directory: context-ledger
-        run: npm install && npm run build
-      - name: Refresh vendored kernel.js from core build
-        run: cp context-ledger/dist/kernel.js claude-code-hook-context-ledger/kernel.js
-      - name: Claude Code hook smoke
-        working-directory: claude-code-hook-context-ledger
-        run: |
-          echo '{"session_id":"ci","prompt":"hello world"}' | node hook.js
-          echo '{"session_id":"ci","prompt":"hello again world"}' | CONTEXT_LEDGER_THRESHOLD=1 node hook.js | grep additionalContext
       - name: Cursor hook smoke
         working-directory: cursor-hook-context-ledger
         run: |

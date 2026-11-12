@@ -66,11 +66,16 @@ warning. Select it with `context.engine: "context-ledger"` as before.
 
 ## Caveats
 
-- **Extractive fallback summaries**: `compress()` summarizes deterministically
-  (first 160 chars per message) — no LLM call, fast and free, but for *short*
-  messages the carrier + view can temporarily exceed raw size (savings appear
-  once summaries shorter than originals dominate). Replace `extractive_summary`
-  with an LLM-backed summarizer (e.g. `ctx.llm.complete`) for maximum ratio.
+- **Model-written summaries, extractive fallback**: `compress()` first tries an
+  OpenAI-compatible endpoint to write the block summary — credentials come from
+  the engine's `update_model` payload (the live model/base_url/api_key Hermes
+  already uses), or `CONTEXT_LEDGER_SUMMARIZER_BASE_URL` / `_API_KEY` / `_MODEL`
+  env vars (`CONTEXT_LEDGER_SUMMARIZER_TIMEOUT` seconds, default 20). Any
+  failure — no credentials, timeout, dead endpoint — falls back to the
+  deterministic extractive summary (first 160 chars per message), so
+  compression never blocks a session. For *short* messages the carrier + view
+  can still temporarily exceed raw size; savings dominate once real summaries
+  kick in.
 - **Thread safety**: Hermes runs compression on a pooled thread; the engine
   keeps per-conversation ledgers in `self._ledgers` keyed by conversation
   hash — concurrent sessions get distinct ledgers.

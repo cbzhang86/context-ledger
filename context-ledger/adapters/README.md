@@ -30,7 +30,6 @@ offer **native extension channels** with deeper automation:
 | --- | --- | --- | --- |
 | **Context replacement** (true zero-touch compression) | OpenClaw | context-engine plugin (`kind: "context-engine"` + `before_prompt_build`) | [openclaw-plugin-context-ledger](../../openclaw-plugin-context-ledger/) — mirrors every turn and injects the compacted view; the model does nothing |
 | Same | Hermes Agent | ContextEngine ABC (`context.engine: "context-ledger"`) | [hermes-plugin-context-ledger](../../hermes-plugin-context-ledger/) — compresses automatically at the threshold, plus ledger_status/search/decompress tools |
-| **Reminder injection** (semi-auto: host nudges, model compresses via MCP) | Claude Code | hooks: UserPromptSubmit `additionalContext` + PreCompact/PostCompact observers | [claude-code-hook-context-ledger](../../claude-code-hook-context-ledger/) — platform boundary: hooks can inject but not rewrite the transcript |
 | Same | Cursor | hooks.json: beforeSubmitPrompt + preCompact observer | [cursor-hook-context-ledger](../../cursor-hook-context-ledger/) — same boundary as Claude Code |
 | MCP only | ChatGPT Desktop / Claude Desktop / Codex / Windsurf / Cline / Gemini CLI / VSCode Copilot / Zed / OpenCode | No native extension surface (or none that replaces context) | Use the MCP config above; the tool descriptions guide the model to compress proactively |
 

@@ -453,7 +453,7 @@ function findCompressible(conv: Conversation) {
   const ranges: { startId: string; endId: string; tokens: number }[] = [];
   let cursor = 1;
   const lastNum = msgNum(conv.msgs[conv.msgs.length - 1]?.id ?? "m00000");
-  const protectedFrom = lastNum - 4 + 1; // tail guard = 4
+  const protectedFrom = lastNum - 4; // tail guard = 4: last 4 msgs stay live
   for (const b of blocks) {
     const bStart = msgNum(b.startId);
     if (bStart > cursor) {

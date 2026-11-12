@@ -63,10 +63,9 @@
 | [`context-ledger/`](context-ledger/) | **核心**：MCP server（stdio + HTTP），13 个测试 | 任何 MCP 宿主——ChatGPT Desktop、Claude、Codex、Cursor、Zed 等 13 个 |
 | [`openclaw-plugin-context-ledger/`](openclaw-plugin-context-ledger/) | OpenClaw 原生 context-engine 插件 | OpenClaw 用户，想要**零操作**压缩 |
 | [`hermes-plugin-context-ledger/`](hermes-plugin-context-ledger/) | Hermes 原生 ContextEngine | Hermes 用户，想要**零操作**压缩 |
-| [`claude-code-hook-context-ledger/`](claude-code-hook-context-ledger/) | Claude Code hook | Claude Code：在合适的时机提醒模型压缩 |
 | [`cursor-hook-context-ledger/`](cursor-hook-context-ledger/) | Cursor hook | Cursor：同样的提醒方式 |
 
-> **两级自动化。** OpenClaw 和 Hermes 可以*替换*模型看到的上下文——真正的无感知压缩。Claude Code 和 Cursor 的 hook 只能*注入提醒*（模型仍通过 MCP 工具执行压缩）。ChatGPT Desktop 和其他大多数宿主仅支持 MCP：你开口，模型压缩。完整兼容矩阵见 [`context-ledger/adapters/README.md`](context-ledger/adapters/README.md)。
+> **两级自动化。** OpenClaw 和 Hermes 可以*替换*模型看到的上下文——真正的无感知压缩，摘要由**模型调用**生成（autoAppend / 引擎压缩路径调用 OpenAI 兼容端点；未配置端点时回落为确定性抽取式摘要）。Cursor 的 hook 只能*注入提醒*（模型仍通过 MCP 工具执行压缩）。ChatGPT Desktop 和其他大多数宿主仅支持 MCP：你开口，模型压缩。完整兼容矩阵见 [`context-ledger/adapters/README.md`](context-ledger/adapters/README.md)。
 
 ---
 

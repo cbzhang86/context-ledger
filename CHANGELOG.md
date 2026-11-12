@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **Global kill switch** — every component (MCP server, OpenClaw plugin,
-  Hermes engine, Claude Code hook, Cursor hook) honors
+  Hermes engine, Cursor hook) honors
   `CONTEXT_LEDGER_DISABLE=1` to turn off reminders/compression without
   uninstalling; set to `0`/`false`/unset to re-enable, no restart needed.
   Hermes manual `/compress` (force) keeps working while disabled; the MCP
@@ -17,6 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Positioning** — README now states plainly where billion-context (the
   original traffic-level proxy) is the better choice, and where
   context-ledger fits (hosts with no routing seam, proxy-free setups).
+
+### Changed
+- **Pruned components that duplicated billion-context's stronger lanes**: removed
+  `claude-code-hook-context-ledger` (billion-context's Claude lane is a full
+  compression posture; our reminder-only hook added no real capability).
+  Claude Code users keep full ledger access via the MCP server.
+
+### Added
+- **Model-written summaries in both native engines.** The Hermes engine
+  (`compress()`) and the OpenClaw plugin (`autoAppend`) now call an
+  OpenAI-compatible endpoint to write block summaries (credentials come from
+  the engine's `update_model` payload / plugin config `apiBaseUrl`+`apiKey`+
+  `model`, or `CONTEXT_LEDGER_SUMMARIZER_*` env vars). Any failure — missing
+  credentials, timeout, dead endpoint — falls back to the deterministic
+  extractive summary, so compression never blocks a session.
+- OpenClaw `autoAppend` now performs **real server-side compression** (oldest
+  compressible range folded into a summary block) instead of only injecting a
+  pre-compression view.
+
+### Fixed
+- Tail-guard off-by-one in the TypeScript kernel: `findCompressible` could
+  return a range ending at `lastNum-3`, which `compress` then rejected
+  (`m00009 vs m00008`); both TS and Python kernels now agree that the last
+  **4** messages are never compressible.
 
 ## [0.1.0] - 2026-11-12
 
@@ -48,9 +72,5 @@ native integrations where hosts allow deeper automation.
   (`context.engine: "context-ledger"`): automatic compression at the token
   threshold, ledger status/search/decompress exposed as agent tools,
   per-agent clones sharing the durable store.
-- `claude-code-hook-context-ledger/` — Claude Code hooks: UserPromptSubmit
-  `additionalContext` compression reminder + PreCompact/PostCompact
-  observers (injection-level automation; Claude Code hooks cannot replace
-  the transcript).
 - `cursor-hook-context-ledger/` — Cursor hooks: beforeSubmitPrompt reminder
   + preCompact observer (same injection-level boundary).

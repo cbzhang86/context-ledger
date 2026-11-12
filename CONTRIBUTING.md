@@ -22,9 +22,6 @@ npm install && npm run build
 cd ../hermes-plugin-context-ledger
 python test_smoke.py
 
-# Claude Code hook (Node, no deps — smoke it by piping stdin)
-echo '{"session_id":"t1","prompt":"hello"}' | node ../claude-code-hook-context-ledger/hook.js
-
 # Cursor hook (Python, stdlib only)
 echo '{"conversation_id":"t1","prompt":"hello"}' | python ../cursor-hook-context-ledger/hook.py
 ```

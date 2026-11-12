@@ -78,17 +78,15 @@ surface — fully automatic, model-transparent compression:
   compresses automatically at the token threshold, with ledger status/search/
   decompress exposed as agent tools.
 
-Two more hosts support **hook-based reminders** (the model still compresses via
+One more host supports a **hook-based reminder** (the model still compresses via
 MCP tools, but the host nags it at the right moment):
 
-- **Claude Code** — [claude-code-hook-context-ledger](../claude-code-hook-context-ledger/):
-  UserPromptSubmit `additionalContext` reminder + PreCompact/PostCompact observers.
 - **Cursor** — [cursor-hook-context-ledger](../cursor-hook-context-ledger/):
   beforeSubmitPrompt reminder + preCompact observer.
 
-Platform boundary: Claude Code and Cursor hooks can inject context but cannot
-replace the transcript — only OpenClaw and Hermes offer true replacement-level
-automation. See the depth table in [adapters/README.md](adapters/README.md).
+Platform boundary: hooks can inject context but cannot replace the transcript —
+only OpenClaw and Hermes offer true replacement-level automation. See the depth
+table in [adapters/README.md](adapters/README.md).
 
 ## Connect to ChatGPT Desktop
 

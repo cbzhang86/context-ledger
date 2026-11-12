@@ -78,13 +78,15 @@ architecture — nobody needs their verbatim text anymore. So:
 | [`context-ledger/`](context-ledger/) | **The core**: MCP server (stdio + HTTP), 13 tests | Any MCP host — ChatGPT Desktop, Claude, Codex, Cursor, Zed, and 8 more |
 | [`openclaw-plugin-context-ledger/`](openclaw-plugin-context-ledger/) | Native OpenClaw context-engine plugin | OpenClaw users who want **zero-touch** compression |
 | [`hermes-plugin-context-ledger/`](hermes-plugin-context-ledger/) | Native Hermes ContextEngine | Hermes users who want **zero-touch** compression |
-| [`claude-code-hook-context-ledger/`](claude-code-hook-context-ledger/) | Claude Code hook | Claude Code: nags the model to compress at the right moment |
 | [`cursor-hook-context-ledger/`](cursor-hook-context-ledger/) | Cursor hook | Cursor: same reminder approach |
 
 > **Two levels of automation.** OpenClaw and Hermes can *replace* the context
-> the model sees — true invisible compression. Claude Code and Cursor hooks
-> can only *inject reminders* (the model still does the compressing via MCP
-> tools). ChatGPT Desktop and most other hosts are MCP-only: you ask, the
+> the model sees — true invisible compression, with summaries written by a
+> **model call** (autoAppend / the engine's compress path calls an
+> OpenAI-compatible endpoint; falls back to deterministic extractive summaries
+> when no endpoint is configured). The Cursor hook can only
+> *inject reminders* (the model still does the compressing via MCP tools).
+> ChatGPT Desktop and most other hosts are MCP-only: you ask, the
 > model compresses. The full compatibility matrix is in
 > [`context-ledger/adapters/README.md`](context-ledger/adapters/README.md).
 
